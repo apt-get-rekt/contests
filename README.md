@@ -1,3 +1,3 @@
-# Contests Edition
+# Contest Edition
 
-Solved problems based on the contest
+Solved problems by contest
