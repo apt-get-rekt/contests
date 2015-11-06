@@ -23,8 +23,8 @@ dynamicTriangleAux n calculated
     | isJust preCalc = []
     | odd n          = recursive half ++ [n]
     | otherwise      = dynamicTriangleAux (half-1) calculated ++ recursive half ++ [n]
-    where half    = n `div` 2
-          preCalc = lookup n calculated
+    where half           = n `div` 2
+          preCalc        = lookup n calculated
           recursive half = dynamicTriangleAux half calculated
 
 -- Calculates new values and saves them as memorization
@@ -35,7 +35,7 @@ dynamicTriangle toCalculate@(h:t) calculated = dynamicTriangle t newCalculated
 -- Calculates a series of triangles through dynamic programming
 triangles [] calculated = calculated
 triangles (h:t) calculated = triangles t newCalculated
-    where toCalculate = nub $ dynamicTriangleAux h calculated
+    where toCalculate   = nub $ dynamicTriangleAux h calculated
           newCalculated = dynamicTriangle toCalculate calculated
 
 -- Filter solutions for the answers to the input
