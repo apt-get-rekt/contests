@@ -4,7 +4,7 @@ import Data.Maybe
 import Data.List
 import Data.Ord
 
-data Status  = On Int | Off deriving (Show)
+data Status  = On {availableStatus :: Int} | Off deriving (Show)
 
 data Server = Server { key    :: Int
                      , ratio  :: Int
@@ -14,40 +14,52 @@ data Server = Server { key    :: Int
 
 data Request = Switch {switch :: Int} | Request {request :: Int} deriving (Show)
 
-isRequest (Request _) = True
-isRequest _ = False
+--------
 
-fromRequest (Switch x) = x
+isNotRequest (Switch _) = True
+isNotRequest _ = False
+
+fromRequest (Switch x)  = x
 fromRequest (Request x) = x
 
 --------
 
-isStatusOn (Server _ _ Off _) = False
-isStatusOn _ = True
+isStatusOn (Server _ _ (On _) _) = True
+isStatusOn _ = False
 
-fromStatus (Server _ _ (On availableStatus) _) = availableStatus
+isNotStatusOn = not . isStatusOn
+
+fromStatus server = availableStatus $ status server
 
 switchStatus (Server k r (On _) t) = (Server k r Off t)
-switchStatus (Server k ratio Off t) = (Server k ratio (On ratio) t)
+switchStatus server = server {status = On (ratio server)}
 
 -- Switching status from off to on refreshes the server's available ratio
-reloadServerRatio s
-    | isStatusOn s = switchStatus $ switchStatus s
-    | otherwise    = switchStatus s
+reloadServerRatio server
+    | isStatusOn server = switchStatus $ switchStatus server
+    | otherwise         = switchStatus server
 
-receiveServerRequest :: Server -> Int -> Server
-receiveServerRequest (Server k r (On st) t) req = (Server k r (On (st - req)) (t + req))
+receiveServerRequest server req =
+    let newAvailableStatus = (availableStatus $ status server) - req
+        newTotal           = total server + req
+    in server {status = On newAvailableStatus, total = newTotal}
 
-receiveReload s req= reloadServerRatio $ receiveServerRequest s req
+receiveAndReload s req = reloadServerRatio $ receiveServerRequest s req
+
+--------
+
+-- Switch a specific server
+switchServerByKey (server:ss) serverKey
+    | key server == serverKey = switchStatus server : ss
+    | otherwise               = server : switchServerByKey ss serverKey
 
 -- Rotatively distribute a request by server
+distributeRequest servers (Request 0) = servers
 distributeRequest servers@(s:ss) request
-    | not (isRequest request) && fromRequest request == key s =  switchStatus s : ss
-    | not (isRequest request) ||
-      not (isStatusOn s) = distributeRequest (ss ++ [s]) request
-    | availableRatio > req  = receiveServerRequest s req : ss
-    | availableRatio == req = ss ++ [receiveReload s req]
-    | otherwise             = distributeRequest (ss ++ [receiveReload s availableRatio]) reqNew
+    | isNotRequest request  = switchServerByKey servers (switch request)
+    | isNotStatusOn s       = distributeRequest (ss ++ [s]) request
+    | availableRatio >= req = receiveServerRequest s req : ss
+    | otherwise             = distributeRequest (ss ++ [receiveAndReload s availableRatio]) reqNew
     where availableRatio = fromStatus s
           req = fromRequest request
           reqNew = Request (req - availableRatio)
@@ -57,24 +69,26 @@ distributeCalls servers [] = servers
 distributeCalls servers calls@(c : cs) = distributeCalls serversNew cs
     where serversNew = distributeRequest servers c
 
---
+--------
 
 createServers [] _ = []
 createServers ratios@(r:rs) k = (Server k sr (On sr) 0) : createServers rs (k + 1)
     where sr = fst . fromJust . C.readInt $ r
 
 createCalls [] = []
-createCalls ([s,serverByte]:t) = (Switch server) : createCalls t
-    where server = fromByteString serverByte
-createCalls ([ratioByte]:t)    = (Request ratio) : createCalls t
-    where ratio = fromByteString ratioByte
+createCalls (c:cs)
+    | length c == 1 = (Request request) : createCalls cs
+    | otherwise     = (Switch serverKey) : createCalls cs
+    where request   = fromByteString $ head c
+          serverKey = fromByteString $ c!!1
 
---
+--------
 
 fromByteString = fst . fromJust . C.readInt
 
-getReceivedRequests = map total . sortBy (comparing key)
---
+parseForOutput = map total . sortBy (comparing key)
+
+--------
 
 main = do
   t <- C.getLine
@@ -85,5 +99,4 @@ main = do
   let servers = createServers serversRatios 1
   let calls = createCalls callsByte
   let results = distributeCalls servers calls
-  putStrLn . unlines . map show $ getReceivedRequests results
-
+  putStrLn . unlines . map show $ parseForOutput results
